@@ -12,7 +12,8 @@ A small native Android TV app for browsing and watching movies, shows and live T
 **Live TV**, in the top bar:
 - Full-screen channel playback, a channel list overlay with logos, and groups and favourites.
 - Now/next guide from XMLTV, channel zapping with ▲▼ and CH+/CH−, and number-key channel jump.
-- Presets for public [iptv-org](https://github.com/iptv-org/iptv) playlists (Canada, USA, UK, sports, movies), or paste any M3U playlist URL and XMLTV guide URL.
+- Presets for public [iptv-org](https://github.com/iptv-org/iptv) playlists: all channels worldwide (about 10,000, by category or by country), Canada, USA, UK, sports and movies. You can also paste any M3U playlist URL and XMLTV guide URL.
+- Duplicate streams of the same channel are merged into one entry. The best stream plays first, and the others are tried automatically if it fails.
 
 **Networking for old TVs**
 - Bundles Conscrypt so TLS 1.3 works on Android 9.

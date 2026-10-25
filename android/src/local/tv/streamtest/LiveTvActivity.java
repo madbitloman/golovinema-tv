@@ -55,6 +55,8 @@ public final class LiveTvActivity extends Activity {
     private static final String ALL = "All channels", FAVOURITES = "★ Favourites";
     // Public, legal free-to-air lists maintained by iptv-org; guides from iptv-epg.org.
     private static final String[][] PRESETS = {
+            {"All channels · by category", "https://iptv-org.github.io/iptv/index.m3u", ""},
+            {"All channels · by country", "https://iptv-org.github.io/iptv/index.country.m3u", ""},
             {"Canada", "https://iptv-org.github.io/iptv/countries/ca.m3u", "https://iptv-epg.org/files/epg-ca.xml.gz"},
             {"USA", "https://iptv-org.github.io/iptv/countries/us.m3u", "https://iptv-epg.org/files/epg-us.xml.gz"},
             {"United Kingdom", "https://iptv-org.github.io/iptv/countries/uk.m3u", "https://iptv-epg.org/files/epg-gb.xml.gz"},
@@ -190,12 +192,12 @@ public final class LiveTvActivity extends Activity {
         playlist = parsed;
         if (!group.equals(ALL) && !group.equals(FAVOURITES) && !parsed.groups.contains(group)) group = ALL;
         filter();
-        Log.i(TAG, "Playlist: " + parsed.channels.size() + " channels, " + parsed.groups.size() + " groups, " + parsed.skipped + " skipped");
-        overlayStatus.setText(parsed.channels.size() + " channels · " + note + (parsed.skipped > 0 ? " · " + parsed.skipped + " unsupported skipped" : ""));
+        Log.i(TAG, "Playlist: " + parsed.channels.size() + " channels, " + parsed.groups.size() + " groups, " + parsed.skipped + " skipped, " + parsed.duplicates + " duplicates merged");
+        overlayStatus.setText(parsed.channels.size() + " channels · " + note + (parsed.duplicates > 0 ? " · " + parsed.duplicates + " duplicates merged" : "") + (parsed.skipped > 0 ? " · " + parsed.skipped + " unsupported skipped" : ""));
         if (playing == null) {
             String last = prefs.getString("last", "");
             IptvPlaylist.Channel start = null;
-            for (IptvPlaylist.Channel channel : parsed.channels) if (channel.url.equals(last)) start = channel;
+            for (IptvPlaylist.Channel channel : parsed.channels) if (channel.has(last)) start = channel;
             if (start != null) { play(start); hideOverlay(); } else { showMessage("", false); showOverlay(); }
         }
         loadGuide();
@@ -223,13 +225,21 @@ public final class LiveTvActivity extends Activity {
     private void filter() {
         visible.clear();
         if (playlist != null) for (IptvPlaylist.Channel channel : playlist.channels)
-            if (group.equals(ALL) || (group.equals(FAVOURITES) ? favourites.contains(channel.url) : channel.group.equals(group))) visible.add(channel);
+            if (group.equals(ALL) || (group.equals(FAVOURITES) ? favourite(channel) : channel.group.equals(group))) visible.add(channel);
         groupLabel.setText(group + " · " + visible.size());
         adapter.notifyDataSetChanged();
     }
 
     // ---- playback ----
-    private void play(IptvPlaylist.Channel channel) {
+    private boolean favourite(IptvPlaylist.Channel channel) {
+        if (favourites.contains(channel.url)) return true;
+        for (IptvPlaylist.Channel backup : channel.backups) if (favourites.contains(backup.url)) return true;
+        return false;
+    }
+    private void play(IptvPlaylist.Channel channel) { play(channel, 0); }
+    /** attempt 0 is the main stream; later attempts walk the merged duplicate streams. */
+    private void play(IptvPlaylist.Channel channel, int attempt) {
+        IptvPlaylist.Channel stream = attempt == 0 ? channel : channel.backups.get(attempt - 1);
         playing = channel;
         prefs.edit().putString("last", channel.url).apply();
         if (video != null) { video.setOnPreparedListener(null); video.setOnErrorListener(null); video.setOnInfoListener(null); video.stopPlayback(); screen.removeView(video); }
@@ -238,11 +248,11 @@ public final class LiveTvActivity extends Activity {
         video.setFocusable(false); video.setFocusableInTouchMode(false);
         screen.addView(video, 0, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
         Map<String, String> headers = new HashMap<>();
-        if (!channel.userAgent.isEmpty()) headers.put("User-Agent", channel.userAgent);
-        if (!channel.referrer.isEmpty()) headers.put("Referer", channel.referrer);
+        if (!stream.userAgent.isEmpty()) headers.put("User-Agent", stream.userAgent);
+        if (!stream.referrer.isEmpty()) headers.put("Referer", stream.referrer);
         showMessage("", true);
         int token = ++generation;
-        Log.i(TAG, "Tuning channel " + channel.number + " (" + channel.group + ")");
+        Log.i(TAG, "Tuning channel " + channel.number + " (" + channel.group + ") stream " + (attempt + 1) + "/" + (channel.backups.size() + 1));
         video.setOnPreparedListener(player -> { if (token == generation) { spinner.setVisibility(View.GONE); player.start(); } });
         video.setOnInfoListener((player, what, extra) -> {
             if (what == MediaPlayer.MEDIA_INFO_BUFFERING_START) spinner.setVisibility(View.VISIBLE);
@@ -251,12 +261,13 @@ public final class LiveTvActivity extends Activity {
         });
         video.setOnErrorListener((player, what, extra) -> {
             if (token != generation) return true;
-            Log.w(TAG, "Channel " + channel.number + " failed: " + what + "/" + extra);
+            Log.w(TAG, "Channel " + channel.number + " stream " + (attempt + 1) + " failed: " + what + "/" + extra);
+            if (attempt < channel.backups.size()) { main.post(() -> { if (token == generation) play(channel, attempt + 1); }); return true; }
             showMessage(channel.name + " is unavailable right now.\nTry another channel.", false);
             return true;
         });
-        video.setVideoURI(Uri.parse(channel.url), headers);
-        showBanner(channel);
+        video.setVideoURI(Uri.parse(stream.url), headers);
+        if (attempt == 0) showBanner(channel);
     }
     private void zap(int step) {
         List<IptvPlaylist.Channel> source = visible.isEmpty() && playlist != null ? playlist.channels : visible;
@@ -282,7 +293,7 @@ public final class LiveTvActivity extends Activity {
         long now = System.currentTimeMillis();
         List<IptvPlaylist.Programme> programmes = guide.get(channel.guideKey());
         IptvPlaylist.Programme current = IptvPlaylist.now(programmes, now), next = IptvPlaylist.next(programmes, now);
-        bannerTitle.setText(channel.number + "  " + channel.name + (favourites.contains(channel.url) ? "  ★" : ""));
+        bannerTitle.setText(channel.number + "  " + channel.name + (favourite(channel) ? "  ★" : ""));
         bannerNow.setText(current == null ? channel.group : "Now  " + clock(current.start) + "–" + clock(current.stop) + "  " + current.title);
         bannerNext.setText(next == null ? "" : "Next  " + clock(next.start) + "  " + next.title);
         bannerNext.setVisibility(next == null ? View.GONE : View.VISIBLE);
@@ -297,10 +308,12 @@ public final class LiveTvActivity extends Activity {
     }
     private void hideOverlay() { overlay.setVisibility(View.GONE); }
     private void toggleFavourite(IptvPlaylist.Channel channel) {
-        if (!favourites.remove(channel.url)) favourites.add(channel.url);
+        boolean removed = favourites.remove(channel.url);
+        for (IptvPlaylist.Channel backup : channel.backups) removed |= favourites.remove(backup.url);
+        if (!removed) favourites.add(channel.url);
         prefs.edit().putStringSet("favourites", new HashSet<>(favourites)).apply();
         if (group.equals(FAVOURITES)) filter(); else adapter.notifyDataSetChanged();
-        overlayStatus.setText(favourites.contains(channel.url) ? "Added " + channel.name + " to favourites" : "Removed " + channel.name + " from favourites");
+        overlayStatus.setText(favourite(channel) ? "Added " + channel.name + " to favourites" : "Removed " + channel.name + " from favourites");
     }
     private void chooseGroup() {
         if (playlist == null) return;
@@ -402,7 +415,7 @@ public final class LiveTvActivity extends Activity {
             boolean selected = list.getSelectedItemPosition() == position && list.hasFocus();
             row.setBackground(selected ? shape(ACCENT) : channel == playing ? shape(Color.rgb(37, 44, 58)) : null);
             number.setText(String.valueOf(channel.number)); number.setTextColor(selected ? BG : MUTED);
-            name.setText((favourites.contains(channel.url) ? "★ " : "") + channel.name); name.setTextColor(selected ? BG : INK);
+            name.setText((favourite(channel) ? "★ " : "") + channel.name); name.setTextColor(selected ? BG : INK);
             IptvPlaylist.Programme current = IptvPlaylist.now(guide.get(channel.guideKey()), System.currentTimeMillis());
             now.setText(current != null ? current.title : channel.group); now.setTextColor(selected ? BG : MUTED);
             logo.setImageDrawable(null);

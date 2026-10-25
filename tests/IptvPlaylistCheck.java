@@ -30,10 +30,26 @@ public final class IptvPlaylistCheck {
         check(second.name.equals("Cinema, Live") && second.group.equals("Other") && second.logo.isEmpty(), "Quoted comma or insecure logo mishandled");
         check(list.guideUrl.equals("https://guide.example/epg.xml.gz"), "Header guide URL lost");
         check(first.guideKey().equals("channel2.us"), "Guide key kept feed suffix: " + first.guideKey());
+        String dupes = "#EXTM3U\n"
+                + "#EXTINF:-1 tvg-id=\"News.us@SD\" group-title=\"News\",News (720p)\nhttps://a.example/sd.m3u8\n"
+                + "#EXTINF:-1 tvg-id=\"News.us@HD\" group-title=\"General\",News (1080p)\nhttps://a.example/hd.m3u8\n"
+                + "#EXTINF:-1 tvg-id=\"News.us@HD\",News (1080p)\nhttps://a.example/hd.m3u8\n"
+                + "#EXTINF:-1 tvg-id=\"Sport.ca\",Sport (1080p) [Geo-blocked]\nhttps://b.example/geo.m3u8\n"
+                + "#EXTINF:-1 tvg-id=\"Sport.ca\",Sport (480p)\nhttps://b.example/open.m3u8\n"
+                + "#EXTINF:-1,Local TV [Not 24/7]\nhttps://c.example/1.m3u8\n"
+                + "#EXTINF:-1,Local TV (720p)\nhttps://c.example/2.m3u8\n"
+                + "#EXTINF:-1 tvg-id=\"Other.ca\",News (720p)\nhttps://d.example/other.m3u8\n";
+        IptvPlaylist.Playlist merged = IptvPlaylist.parse(dupes);
+        check(merged.channels.size() == 4 && merged.duplicates == 4, "Dedup count wrong: " + merged.channels.size() + "/" + merged.duplicates);
+        IptvPlaylist.Channel news = merged.channels.get(0), sport = merged.channels.get(1), local = merged.channels.get(2);
+        check(news.url.endsWith("/hd.m3u8") && news.group.equals("News") && news.number == 1 && news.backups.size() == 1 && news.has("https://a.example/sd.m3u8"), "Best feed not promoted with backups");
+        check(sport.url.endsWith("/open.m3u8") && sport.backups.get(0).url.endsWith("/geo.m3u8"), "Geo-blocked stream preferred");
+        check(local.url.endsWith("/2.m3u8") && local.backups.size() == 1, "Name-only duplicates not merged");
+        check(merged.channels.get(3).number == 4 && merged.channels.get(3).backups.isEmpty(), "Different ids with the same name were merged");
         try { IptvPlaylist.parse("<html>nope</html>"); throw new AssertionError("Accepted HTML as playlist"); } catch (IOException expected) { }
 
         IptvPlaylist.Playlist real = IptvPlaylist.parse(new String(Files.readAllBytes(Paths.get(args[0])), StandardCharsets.UTF_8));
-        check(real.channels.size() > 100 && real.groups.size() > 3, "Real iptv-org playlist parsed too few channels");
+        check(real.duplicates >= 0 && real.channels.size() > 100 && real.groups.size() > 3, "Real iptv-org playlist parsed too few channels");
         check(real.channels.stream().anyMatch(c -> !c.userAgent.isEmpty()), "Real playlist user agents lost");
 
         long base = IptvPlaylist.time("20261023120000 +0000");
@@ -63,6 +79,6 @@ public final class IptvPlaylistCheck {
         String hostile = "<?xml version=\"1.0\"?><!DOCTYPE tv [<!ENTITY x SYSTEM \"file:///etc/passwd\">]><tv><programme channel=\"Channel2.us\"><title>&x;</title></programme></tv>";
         try { IptvPlaylist.guide(new ByteArrayInputStream(hostile.getBytes(StandardCharsets.UTF_8)), new HashSet<>(Arrays.asList("channel2.us")), 0, Long.MAX_VALUE, 10); throw new AssertionError("Accepted DOCTYPE in guide"); }
         catch (org.xml.sax.SAXException expected) { }
-        System.out.println("PASS: M3U attributes/headers/groups/skips, real iptv-org playlist (" + real.channels.size() + " channels), XMLTV time zones, now/next, guide filtering and DOCTYPE rejection");
+        System.out.println("PASS: M3U attributes/headers/groups/skips, duplicate merging with backup streams, real iptv-org playlist (" + real.channels.size() + " channels), XMLTV time zones, now/next, guide filtering and DOCTYPE rejection");
     }
 }
