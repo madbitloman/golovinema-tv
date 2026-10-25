@@ -2,6 +2,8 @@ package local.tv.streamtest;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -52,7 +54,7 @@ public final class LiveTvActivity extends Activity {
     private static final String TAG = "LiveTv";
     private static final int BG = Color.rgb(11, 14, 20), PANEL = Color.argb(235, 18, 22, 30), INK = Color.rgb(246, 244, 239),
             MUTED = Color.rgb(163, 172, 187), ACCENT = Color.rgb(255, 194, 98);
-    private static final String ALL = "All channels", FAVOURITES = "★ Favourites";
+    private static final String ALL = "All channels", FAVOURITES = "★ Favourites", ACE_GROUP = "AceStream links";
     // Public, legal free-to-air lists maintained by iptv-org; guides from iptv-epg.org.
     private static final String[][] PRESETS = {
             {"All channels · by category", "https://iptv-org.github.io/iptv/index.m3u", ""},
@@ -82,6 +84,7 @@ public final class LiveTvActivity extends Activity {
     private final List<IptvPlaylist.Channel> visible = new ArrayList<>();
     private Set<String> favourites = new HashSet<>();
     private String group = ALL;
+    private IptvPlaylist.Playlist base;
     private IptvPlaylist.Channel playing;
     private int generation;
     private final StringBuilder digits = new StringBuilder();
@@ -189,18 +192,109 @@ public final class LiveTvActivity extends Activity {
         });
     }
     private void applyPlaylist(IptvPlaylist.Playlist parsed, String note) {
-        playlist = parsed;
-        if (!group.equals(ALL) && !group.equals(FAVOURITES) && !parsed.groups.contains(group)) group = ALL;
+        base = parsed; playlist = withLinks(parsed);
+        if (!group.equals(ALL) && !group.equals(FAVOURITES) && !playlist.groups.contains(group)) group = ALL;
         filter();
         Log.i(TAG, "Playlist: " + parsed.channels.size() + " channels, " + parsed.groups.size() + " groups, " + parsed.skipped + " skipped, " + parsed.duplicates + " duplicates merged");
         overlayStatus.setText(parsed.channels.size() + " channels · " + note + (parsed.duplicates > 0 ? " · " + parsed.duplicates + " duplicates merged" : "") + (parsed.skipped > 0 ? " · " + parsed.skipped + " unsupported skipped" : ""));
         if (playing == null) {
             String last = prefs.getString("last", "");
             IptvPlaylist.Channel start = null;
-            for (IptvPlaylist.Channel channel : parsed.channels) if (channel.has(last)) start = channel;
+            for (IptvPlaylist.Channel channel : playlist.channels) if (channel.has(last)) start = channel;
             if (start != null) { play(start); hideOverlay(); } else { showMessage("", false); showOverlay(); }
         }
         loadGuide();
+    }
+    /** The user's own AceStream links, appended after the playlist so its channel numbers stay put. */
+    private IptvPlaylist.Playlist withLinks(IptvPlaylist.Playlist parsed) {
+        List<String[]> links = aceLinks();
+        if (links.isEmpty()) return parsed;
+        List<IptvPlaylist.Channel> channels = new ArrayList<>(parsed.channels);
+        for (String[] link : links)
+            channels.add(new IptvPlaylist.Channel(channels.size() + 1, link[0], AceStream.link(link[1]), "", ACE_GROUP, "", "", ""));
+        List<String> groups = new ArrayList<>(); groups.add(ACE_GROUP); groups.addAll(parsed.groups);
+        return new IptvPlaylist.Playlist(channels, groups, parsed.guideUrl, parsed.skipped, parsed.duplicates);
+    }
+    private List<String[]> aceLinks() {
+        List<String[]> links = new ArrayList<>();
+        try {
+            org.json.JSONArray saved = new org.json.JSONArray(prefs.getString("acelinks", "[]"));
+            for (int i = 0; i < saved.length(); i++) {
+                org.json.JSONObject link = saved.getJSONObject(i);
+                String id = AceStream.contentId(link.optString("id"));
+                if (!id.isEmpty()) links.add(new String[]{link.optString("name", "AceStream " + id.substring(0, 8)), id});
+            }
+        } catch (Exception error) { Log.w(TAG, "AceStream links unreadable"); }
+        return links;
+    }
+    private void saveAceLinks(List<String[]> links) {
+        org.json.JSONArray saved = new org.json.JSONArray();
+        try { for (String[] link : links) saved.put(new org.json.JSONObject().put("name", link[0]).put("id", link[1])); }
+        catch (org.json.JSONException impossible) { return; }
+        prefs.edit().putString("acelinks", saved.toString()).apply();
+        if (base != null) { playlist = withLinks(base); if (!group.equals(ALL) && !group.equals(FAVOURITES) && !playlist.groups.contains(group)) group = ALL; filter(); }
+    }
+    private void addAceLink() {
+        LinearLayout form = new LinearLayout(this); form.setOrientation(LinearLayout.VERTICAL); form.setPadding(dp(20), dp(8), dp(20), 0);
+        EditText address = new EditText(this); address.setSingleLine(true); address.setInputType(InputType.TYPE_TEXT_VARIATION_URI);
+        address.setHint("acestream://… or 40-character content ID"); form.addView(address);
+        EditText name = new EditText(this); name.setSingleLine(true); name.setHint("Name (optional)"); form.addView(name);
+        new AlertDialog.Builder(this).setTitle("Add AceStream link").setView(form).setPositiveButton("Add", (d, which) -> {
+            String id = AceStream.contentId(address.getText().toString());
+            if (id.isEmpty()) { overlayStatus.setText("That isn’t an AceStream link or content ID"); return; }
+            List<String[]> links = aceLinks();
+            for (String[] link : links) if (link[1].equals(id)) { overlayStatus.setText("That AceStream link is already saved"); return; }
+            String label = name.getText().toString().trim();
+            links.add(new String[]{label.isEmpty() ? "AceStream " + id.substring(0, 8) : label, id});
+            saveAceLinks(links); group = ACE_GROUP; filter();
+            overlayStatus.setText("Added " + links.get(links.size() - 1)[0]);
+        }).setNegativeButton("Cancel", null).show();
+    }
+    private void removeAceLink() {
+        List<String[]> links = aceLinks();
+        if (links.isEmpty()) { overlayStatus.setText("No AceStream links saved"); return; }
+        String[] names = new String[links.size()];
+        for (int i = 0; i < names.length; i++) names[i] = links.get(i)[0];
+        new AlertDialog.Builder(this).setTitle("Remove an AceStream link").setItems(names, (d, which) -> {
+            String removed = links.remove(which)[0]; saveAceLinks(links); overlayStatus.setText("Removed " + removed);
+        }).show();
+    }
+    private String installedAcePackage() {
+        for (String name : AceStream.PACKAGES) {
+            try { getPackageManager().getPackageInfo(name, 0); return name; }
+            catch (Exception notInstalled) { }
+        }
+        return "";
+    }
+    /** Engine down: start it if installed, otherwise point to Google Play. Never installs anything itself. */
+    private void aceUnavailable(IptvPlaylist.Channel channel, String id) {
+        spinner.setVisibility(View.GONE);
+        String installed = installedAcePackage();
+        if (installed.isEmpty()) {
+            showMessage("AceStream channels need the free Ace Stream Engine app.\nInstall it from Google Play, open it once, then come back.", false);
+            new AlertDialog.Builder(this).setTitle("Ace Stream Engine not installed")
+                    .setMessage("“" + channel.name + "” is an AceStream link. Install Ace Stream Engine from Google Play, open it once, then come back here.")
+                    .setPositiveButton("Open Google Play", (d, which) -> {
+                        try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + AceStream.STORE_PACKAGE))); }
+                        catch (ActivityNotFoundException noStore) {
+                            try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=" + AceStream.STORE_PACKAGE))); }
+                            catch (ActivityNotFoundException noBrowser) { showMessage("Google Play isn’t available on this TV.\nInstall Ace Stream Engine (" + AceStream.STORE_PACKAGE + ") another way.", false); }
+                        }
+                    }).setNegativeButton("Cancel", null).show();
+            return;
+        }
+        showMessage("Ace Stream Engine isn’t running.", false);
+        new AlertDialog.Builder(this).setTitle("Start Ace Stream Engine")
+                .setMessage("Open the Ace Stream app so its engine starts, then press Back to return. The channel retries automatically.")
+                .setPositiveButton("Open Ace Stream", (d, which) -> {
+                    Intent launch = getPackageManager().getLeanbackLaunchIntentForPackage(installed);
+                    if (launch == null) launch = getPackageManager().getLaunchIntentForPackage(installed);
+                    if (launch != null) startActivity(launch); else showMessage("The Ace Stream app can’t be opened from here.", false);
+                })
+                .setNeutralButton("Play in Ace Stream", (d, which) -> {
+                    try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(AceStream.link(id))).setPackage(installed)); }
+                    catch (ActivityNotFoundException error) { showMessage("The Ace Stream app didn’t accept the link.", false); }
+                }).setNegativeButton("Cancel", null).show();
     }
     private void loadGuide() {
         String address = prefs.getString("guide", "");
@@ -266,7 +360,22 @@ public final class LiveTvActivity extends Activity {
             showMessage(channel.name + " is unavailable right now.\nTry another channel.", false);
             return true;
         });
-        video.setVideoURI(Uri.parse(stream.url), headers);
+        String ace = AceStream.contentId(stream.url);
+        if (ace.isEmpty()) video.setVideoURI(Uri.parse(stream.url), headers);
+        else {
+            showMessage("Connecting to AceStream…\nThis can take up to 30 seconds.", true);
+            VideoView target = video;
+            network.submit(() -> {
+                boolean running = AceStream.engineRunning(2000);
+                main.post(() -> {
+                    if (token != generation || target != video) return;
+                    Log.i(TAG, "AceStream engine " + (running ? "running" : "unavailable"));
+                    if (running) target.setVideoURI(Uri.parse(AceStream.streamUrl(ace, "golovinema")), Collections.emptyMap());
+                    else if (attempt < channel.backups.size()) play(channel, attempt + 1);
+                    else aceUnavailable(channel, ace);
+                });
+            });
+        }
         if (attempt == 0) showBanner(channel);
     }
     private void zap(int step) {
@@ -323,11 +432,13 @@ public final class LiveTvActivity extends Activity {
         }).show();
     }
     private void settings() {
-        String[] items = {"Choose a channel list", "Custom playlist URL (M3U)", "TV guide URL (XMLTV)", "Reload channels and guide"};
+        String[] items = {"Choose a channel list", "Custom playlist URL (M3U)", "TV guide URL (XMLTV)", "Add AceStream link", "Remove an AceStream link", "Reload channels and guide"};
         new AlertDialog.Builder(this).setTitle("Live TV settings").setItems(items, (dialog, which) -> {
             if (which == 0) choosePreset(false);
             else if (which == 1) ask("Playlist URL", "playlist", true);
             else if (which == 2) ask("TV guide URL (blank uses the playlist’s own)", "guide", false);
+            else if (which == 3) addAceLink();
+            else if (which == 4) removeAceLink();
             else loadPlaylist(true);
         }).show();
     }
@@ -354,7 +465,7 @@ public final class LiveTvActivity extends Activity {
             if (playlistKey) { prefs.edit().putString("last", "").apply(); reset(); loadPlaylist(true); } else loadGuide();
         }).setNegativeButton("Cancel", null).show();
     }
-    private void reset() { playlist = null; playing = null; guide = Collections.emptyMap(); group = ALL; filter(); }
+    private void reset() { base = null; playlist = null; playing = null; guide = Collections.emptyMap(); group = ALL; filter(); }
 
     @Override public boolean onKeyDown(int key, KeyEvent event) {
         boolean overlayShown = overlay.getVisibility() == View.VISIBLE;

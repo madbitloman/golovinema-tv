@@ -13,6 +13,7 @@ A small native Android TV app for browsing and watching movies, shows and live T
 - Full-screen channel playback, a channel list overlay with logos, and groups and favourites.
 - Now/next guide from XMLTV, channel zapping with ▲▼ and CH+/CH−, and number-key channel jump.
 - Presets for public [iptv-org](https://github.com/iptv-org/iptv) playlists: all channels worldwide (about 10,000, by category or by country), Canada, USA, UK, sports and movies. You can also paste any M3U playlist URL and XMLTV guide URL.
+- AceStream links (`acestream://…`) in playlists, or added under Live TV → Settings → Add AceStream link. They play through the free [Ace Stream Engine](https://play.google.com/store/apps/details?id=org.acestream.node) app. If it isn't installed, the app offers the Google Play page. No AceStream content is bundled.
 - Duplicate streams of the same channel are merged into one entry. The best stream plays first, and the others are tried automatically if it fails.
 
 **Networking for old TVs**

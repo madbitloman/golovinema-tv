@@ -117,7 +117,9 @@ public final class IptvPlaylist {
                 group = line.substring(8).trim();
             } else if (!line.startsWith("#")) {
                 if (info == null) { skipped++; continue; }
-                if (!playable(line)) { skipped++; info = null; continue; }
+                String ace = AceStream.contentId(line);
+                if (!ace.isEmpty()) line = AceStream.link(ace);
+                else if (!playable(line)) { skipped++; info = null; continue; }
                 if (!urls.add(line)) { duplicates++; info = null; continue; }
                 String channelGroup = info.getOrDefault("group-title", group);
                 if (channelGroup.isEmpty()) channelGroup = "Other";
