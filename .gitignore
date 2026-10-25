@@ -1,0 +1,22 @@
+node_modules/
+android/build/
+android/.local/
+android/res/raw/test_clip.mp4
+dist/
+__pycache__/
+.DS_Store
+
+# Local-only research, device logs and notes (not part of the published app)
+analysis/
+diagnostics/
+CINEMA.md
+assets/branding/golovinema-logo-prompt.txt
+scripts/deobfuscate-player.cjs
+scripts/inspect-player.mjs
+scripts/fetch-catalog.sh
+scripts/build-catalog-probe.sh
+scripts/compare-catalog-tls.py
+scripts/diagnose-catalog-tls.py
+scripts/audit-tv.py
+scripts/cleanup-tv.py
+NOTES.md

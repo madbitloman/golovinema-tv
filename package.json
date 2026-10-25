@@ -1,0 +1,21 @@
+{
+  "name": "golovinema-tv",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Native Android TV movie browser and live TV (M3U/XMLTV) player",
+  "scripts": {
+    "test": "node --test",
+    "test:native": "bash scripts/check-native.sh",
+    "build:tv": "bash scripts/build-tv-test.sh"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@babel/generator": "7.29.7",
+    "@babel/parser": "7.29.7",
+    "@babel/traverse": "7.29.7",
+    "@babel/types": "7.29.7"
+  },
+  "license": "MIT"
+}

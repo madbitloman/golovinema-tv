@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Live TV streams from user-chosen IPTV playlists are often plain HTTP, so cleartext is allowed by default.
+     The app's own catalog, metadata and API hosts stay HTTPS-only. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors><certificates src="system" /></trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">123moviesfree.net</domain>
+        <domain includeSubdomains="true">icdn.my.id</domain>
+        <domain includeSubdomains="true">omdbapi.com</domain>
+        <domain includeSubdomains="true">typesafe.ai</domain>
+        <domain includeSubdomains="true">cloudflare-dns.com</domain>
+        <domain includeSubdomains="true">ployan.me</domain>
+        <domain includeSubdomains="true">embos.top</domain>
+    </domain-config>
+</network-security-config>
