@@ -23,3 +23,4 @@ NOTES.md
 
 # local-only bridge plugin (private handoff rule: never commit)
 core/CoreSpi.java
+core/build/
