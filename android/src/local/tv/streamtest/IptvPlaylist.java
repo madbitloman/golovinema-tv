@@ -164,7 +164,7 @@ public final class IptvPlaylist {
         }
         return -1;
     }
-    static boolean playable(String address) {
+    public static boolean playable(String address) {
         try {
             URI uri = new URI(address);
             String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);

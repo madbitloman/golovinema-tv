@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="ChannelScene" extends="Scene">
+  <script type="text/brightscript" uri="pkg:/components/ChannelScene.brs" />
+  <children>
+    <Label id="status" translation="[60, 60]" color="0xFFFFFFFF" font="font:MediumSystemFont" />
+    <PosterGrid id="grid" itemSize="[280, 158]" itemSpacing="[10, 10]" numColumns="6" numRows="4" wrapDividerHeight="0" caption1NumLines="1" translation="[48, 148]" visible="false" />
+    <Video id="player" translation="[0, 0]" width="1920" height="1080" enableTrickPlay="false" visible="false" />
+  </children>
+</component>

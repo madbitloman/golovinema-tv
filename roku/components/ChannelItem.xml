@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="ChannelItem" extends="ContentNode">
+  <field name="streamUrl" type="string" />
+  <field name="streamFormat" type="string" value="hls" />
+  <field name="userAgent" type="string" />
+  <field name="referrer" type="string" />
+</component>

@@ -16,6 +16,7 @@ mkdir -p "$tv_check"
     "$tv_root/android/src/local/tv/streamtest/CatalogTls.java" \
     "$tv_root/android/src/local/tv/streamtest/CatalogDns.java" \
     "$tv_root/android/src/local/tv/streamtest/AceStream.java" "$tv_root/android/src/local/tv/streamtest/IptvPlaylist.java" "$tv_root/tests/IptvPlaylistCheck.java" "$tv_root/tests/AceStreamCheck.java" \
+    "$tv_root/core/CoreCli.java" "$tv_root/tests/CoreCliCheck.java" \
     "$tv_root/android/src/local/tv/streamtest/PlayerProtocol.java" \
     "$tv_root/android/src/local/tv/streamtest/PlaylistProbe.java" \
     "$tv_root/android/src/local/tv/streamtest/TasteProtocol.java" \
@@ -28,6 +29,7 @@ mkdir -p "$tv_check"
 "$tv_java_root/java" -cp "$tv_check:$tv_json:$tv_deps" local.tv.streamtest.CatalogTlsCheck "$tv_root/tests/fixtures/tls-localhost.pem"
 "$tv_java_root/java" -cp "$tv_check:$tv_json:$tv_deps" local.tv.streamtest.CatalogDnsCheck
 "$tv_java_root/java" -cp "$tv_check:$tv_json:$tv_deps" local.tv.streamtest.IptvPlaylistCheck "$tv_root/tests/fixtures/iptv-org-sports.m3u"
+"$tv_java_root/java" -cp "$tv_check:$tv_json:$tv_deps" local.tv.streamtest.CoreCliCheck "$tv_root/tests/fixtures/iptv-org-sports.m3u"
 "$tv_java_root/java" -cp "$tv_check:$tv_json:$tv_deps" local.tv.streamtest.AceStreamCheck
 "$tv_java_root/java" -cp "$tv_check:$tv_json:$tv_deps" PlaylistProbeCheck
 "$tv_java_root/java" -cp "$tv_check:$tv_json:$tv_deps" TasteAndRatingsCheck
