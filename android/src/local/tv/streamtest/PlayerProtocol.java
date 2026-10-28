@@ -50,8 +50,9 @@ public final class PlayerProtocol {
         String route = new String(cipher.doFinal(data), StandardCharsets.UTF_8);
         java.util.regex.Matcher movie = java.util.regex.Pattern.compile("^(?:movie/)?([0-9]+)(?:-.*)?$").matcher(route);
         if (movie.matches()) return "https://embos.top/movie/?mid=" + movie.group(1);
-        java.util.regex.Matcher show = java.util.regex.Pattern.compile("^tv/([0-9]+)/([0-9]+)-([0-9]+)$").matcher(route);
-        if (show.matches()) return "https://embos.top/tv/?mid=" + show.group(1) + "&s=" + show.group(2) + "&e=" + show.group(3);
+        java.util.regex.Matcher show = java.util.regex.Pattern.compile("^tv/([0-9]+)/([0-9]+)-([0-9]+)(?:-[0-9]+)?$").matcher(route);
+        // Inner server 2 (VidNest) plays series reliably and supports the remote's seek/pause controls.
+        if (show.matches()) return "https://embos.top/tv/?mid=" + show.group(1) + "&s=" + show.group(2) + "&e=" + show.group(3) + "&sv=2";
         throw new IllegalArgumentException("Unsupported browser route");
     }
     public static boolean browserAllowed(String address) {
