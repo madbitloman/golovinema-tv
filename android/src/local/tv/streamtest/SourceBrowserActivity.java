@@ -21,6 +21,7 @@ import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -55,6 +56,21 @@ public final class SourceBrowserActivity extends Activity {
             return "https".equals(uri.getScheme()) && "vidnest.fun".equals(uri.getHost())
                 && uri.getUserInfo() == null && (uri.getPort() == -1 || uri.getPort() == 443)
                 && uri.getPath().matches("/(?:movie/[0-9]+|tv/[0-9]+/[0-9]+/[0-9]+)/?");
+        } catch (Exception error) { return false; }
+    }
+    /** Ad networks seen on the player pages; their hostnames rotate, so the loader proxy is matched by shape. */
+    private static final String[] AD_HOSTS = {"chiripaethenes.com", "omg10.com", "rtmark.net", "4armn.com", "wvdme.com",
+        "daleelerah.info", "nresystems.com", "googletagmanager.com", "google-analytics.com", "doubleclick.net", "googlesyndication.com"};
+    /** True for the ad loader and known ad networks; the page, its player and the video stream are left alone. */
+    static boolean adRequest(String value) {
+        try {
+            java.net.URI uri = new java.net.URI(value);
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(java.util.Locale.ROOT);
+            // VidNest loads every overlay, pop-up and redirect through one script fetched via a workers.dev proxy.
+            if (host.endsWith(".workers.dev") && uri.getPath() != null && uri.getPath().startsWith("/fetch")
+                && uri.getRawQuery() != null && uri.getRawQuery().contains("url=")) return true;
+            for (String ad : AD_HOSTS) if (host.equals(ad) || host.endsWith("." + ad)) return true;
+            return false;
         } catch (Exception error) { return false; }
     }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
@@ -100,6 +116,11 @@ public final class SourceBrowserActivity extends Activity {
                 boolean blocked = !allowed(request.getUrl().toString());
                 if (blocked) message.setText("This page tried to open a different site. Back returns to GOLOVINEMA.");
                 return blocked;
+            }
+            @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                if (!adRequest(request.getUrl().toString())) return null;
+                Log.i("Cinema", "Blocked ad request host=" + request.getUrl().getHost());
+                return new WebResourceResponse("text/plain", "utf-8", new java.io.ByteArrayInputStream(new byte[0]));
             }
             @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
                 if (request.isForMainFrame()) {
