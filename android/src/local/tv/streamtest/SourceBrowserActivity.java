@@ -155,6 +155,7 @@ public final class SourceBrowserActivity extends Activity {
         addButton(mediaControls, "−30s", () -> controlMedia(-30));
         addButton(mediaControls, "Play / Pause", () -> controlMedia(0));
         addButton(mediaControls, "+30s", () -> controlMedia(30));
+        addButton(mediaControls, "Subtitles", this::chooseSubtitles);
         mediaControls.setVisibility(View.GONE);
         root.addView(mediaControls, new FrameLayout.LayoutParams(-1, -2, android.view.Gravity.BOTTOM));
         setContentView(root);
@@ -201,6 +202,77 @@ public final class SourceBrowserActivity extends Activity {
         web.evaluateJavascript("(function(){var v=document.querySelector('video');if(!v)return false;" + action + "return true})()", value -> {
             if (!"true".equals(value)) android.widget.Toast.makeText(this, "Video is not ready to seek yet", android.widget.Toast.LENGTH_SHORT).show();
         });
+        inspector.removeCallbacks(hideMedia); inspector.postDelayed(hideMedia, 4000);
+    }
+    /** Subtitle list for the VidNest title on screen, from the same source VidNest's own player uses. */
+    static String subtitleIndex(String page) {
+        try {
+            java.net.URI uri = new java.net.URI(page);
+            if (!providerAllowed(page)) return "";
+            String path = uri.getPath().replaceAll("/$", "");
+            return "https://sub.vdrk.site/v2" + path;
+        } catch (Exception error) { return ""; }
+    }
+    private static String download(String address, int limit) throws Exception {
+        java.net.HttpURLConnection connection = (java.net.HttpURLConnection) new java.net.URL(address).openConnection();
+        connection.setConnectTimeout(10000); connection.setReadTimeout(15000);
+        try {
+            if (connection.getResponseCode() != 200) return "";
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream(); byte[] buffer = new byte[8192]; int read;
+            try (java.io.InputStream input = connection.getInputStream()) {
+                while ((read = input.read(buffer)) > 0) { out.write(buffer, 0, read); if (out.size() > limit) throw new java.io.IOException("Subtitle file too large"); }
+            }
+            return out.toString("UTF-8");
+        } finally { connection.disconnect(); }
+    }
+    private void chooseSubtitles() {
+        String index = subtitleIndex(web.getUrl());
+        if (index.isEmpty()) { android.widget.Toast.makeText(this, "Subtitles are available once the video has loaded", android.widget.Toast.LENGTH_SHORT).show(); return; }
+        int token = pageGeneration;
+        new Thread(() -> {
+            java.util.List<String[]> tracks = new java.util.ArrayList<>();
+            try {
+                org.json.JSONArray list = new org.json.JSONArray(download(index, 262144));
+                for (int i = 0; i < list.length(); i++) {
+                    String label = list.getJSONObject(i).optString("label"), file = list.getJSONObject(i).optString("file");
+                    if (!label.isEmpty() && file.startsWith("https://")) tracks.add(new String[]{label, file});
+                }
+            } catch (Exception error) { Log.i("Cinema", "No subtitle list: " + error.getClass().getSimpleName()); }
+            inspector.post(() -> {
+                if (isFinishing() || token != pageGeneration) return;
+                if (tracks.isEmpty()) { android.widget.Toast.makeText(this, "No subtitles found for this title", android.widget.Toast.LENGTH_LONG).show(); return; }
+                String[] labels = new String[tracks.size() + 1]; labels[0] = "Off";
+                for (int i = 0; i < tracks.size(); i++) labels[i + 1] = tracks.get(i)[0];
+                new AlertDialog.Builder(this).setTitle("Subtitles").setItems(labels, (dialog, which) -> {
+                    if (which == 0) showSubtitles(token, "", ""); else loadSubtitles(token, tracks.get(which - 1));
+                }).setNegativeButton("Cancel", null).show();
+            });
+        }).start();
+    }
+    private void loadSubtitles(int token, String[] track) {
+        new Thread(() -> {
+            String text;
+            try { text = download(track[1], 2097152); } catch (Exception error) { text = ""; }
+            String vtt = text;
+            inspector.post(() -> {
+                if (isFinishing() || token != pageGeneration) return;
+                if (!vtt.startsWith("WEBVTT") && !vtt.startsWith("\uFEFFWEBVTT")) { android.widget.Toast.makeText(this, "Those subtitles could not be loaded", android.widget.Toast.LENGTH_LONG).show(); return; }
+                showSubtitles(token, track[0], vtt);
+            });
+        }).start();
+    }
+    /** Replaces GOLOVINEMA's subtitle track on the page's video; empty text turns subtitles off. */
+    private void showSubtitles(int token, String label, String vtt) {
+        if (isFinishing() || token != pageGeneration) return;
+        web.evaluateJavascript("(function(label,text){var v=document.querySelector('video');if(!v)return false;"
+            + "v.querySelectorAll('track[data-golovinema]').forEach(function(t){t.remove()});"
+            + "for(var i=0;i<v.textTracks.length;i++)v.textTracks[i].mode='disabled';if(!text)return true;"
+            + "var t=document.createElement('track');t.kind='subtitles';t.label=label;t.setAttribute('data-golovinema','1');"
+            + "t.src=URL.createObjectURL(new Blob([text],{type:'text/vtt'}));v.appendChild(t);"
+            + "setTimeout(function(){for(var i=0;i<v.textTracks.length;i++)v.textTracks[i].mode=v.textTracks[i].label===label?'showing':'disabled'},300);"
+            + "return true})(" + org.json.JSONObject.quote(label) + "," + org.json.JSONObject.quote(vtt) + ")", value -> {
+                android.widget.Toast.makeText(this, !"true".equals(value) ? "Video is not ready yet" : vtt.isEmpty() ? "Subtitles off" : "Subtitles: " + label, android.widget.Toast.LENGTH_SHORT).show();
+            });
         inspector.removeCallbacks(hideMedia); inspector.postDelayed(hideMedia, 4000);
     }
     private void chooseVideoServer() {
