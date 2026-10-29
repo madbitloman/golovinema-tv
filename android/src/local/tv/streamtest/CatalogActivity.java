@@ -127,6 +127,8 @@ public final class CatalogActivity extends Activity {
         if (!horror.isEmpty()) hero(horror.get(0)); else if (!home.isEmpty()) hero(home.get(0));
         genreRow();
         if (!continuing.isEmpty()) row("Continue watching", continuing);
+        List<Movie> recent = store.recent(); recent.removeAll(continuing);
+        row("Recently watched", recent);
         row("Horror for you", horror);
         if (taste.hasProfile()) row("For you · from your searches", taste.rank(store.all()));
         row("TV Shows", store.shows());
@@ -358,7 +360,7 @@ public final class CatalogActivity extends Activity {
         launchEpisode(movie, new Movie.Episode("1", ""), position);
     }
     private void launchEpisode(Movie movie, Movie.Episode episode, int position) {
-        store.remember(java.util.Collections.singletonList(movie)); returnedFromPlayer = true; selected = movie;
+        store.opened(movie); returnedFromPlayer = true; selected = movie;
         Intent intent = new Intent(this, MainActivity.class); intent.putExtra("provider", movie.provider); intent.putExtra("playerUrl", movie.playerUrl); intent.putExtra("sourcePath", movie.sourcePath); intent.putExtra("movie", movie.id); intent.putExtra("title", movie.title + (movie.series() ? " · " + episode.title : "")); intent.putExtra("series", movie.series()); intent.putExtra("episode", episode.id); intent.putExtra("resume", Math.max(0, position)); startActivity(intent);
     }
     private void backToCatalog() {

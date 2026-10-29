@@ -45,7 +45,7 @@ public final class CatalogStore {
         // Keep saved/history records even when trimming the browsing cache.
         while (known.size() > 800) {
             String remove = null;
-            for (String id : known.keySet()) if (!preferences.getBoolean("saved_" + id, false) && preferences.getLong("watched_" + id, 0) == 0) { remove = id; break; }
+            for (String id : known.keySet()) if (!preferences.getBoolean("saved_" + id, false) && lastWatched(id) == 0) { remove = id; break; }
             if (remove == null) break;
             known.remove(remove);
         }
@@ -72,6 +72,19 @@ public final class CatalogStore {
         }
         list.sort((a, b) -> Long.compare(preferences.getLong("watched_" + b.id, 0), preferences.getLong("watched_" + a.id, 0)));
         return list;
+    }
+    /** Recorded when playback starts, so browser playback (which reports no position) still counts as watched. */
+    public void opened(Movie movie) {
+        remember(java.util.Collections.singletonList(movie));
+        preferences.edit().putLong("opened_" + movie.id, System.currentTimeMillis()).apply();
+    }
+    private long lastWatched(String id) { return Math.max(preferences.getLong("opened_" + id, 0), preferences.getLong("watched_" + id, 0)); }
+    /** Most recently played titles first, up to 20. */
+    public List<Movie> recent() {
+        List<Movie> list = new ArrayList<>();
+        for (Movie movie : all()) if (lastWatched(movie.id) > 0) list.add(movie);
+        list.sort((a, b) -> Long.compare(lastWatched(b.id), lastWatched(a.id)));
+        return new ArrayList<>(list.subList(0, Math.min(list.size(), 20)));
     }
     public CatalogParser.Page page(String path) throws Exception {
         if (!path.startsWith("/") || path.startsWith("//")) throw new IllegalArgumentException("Invalid catalog path");
